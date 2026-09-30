@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#080b10" />
+  <meta name="description" content="FC+ LIVE TV — Sports streaming & live events dashboard." />
+  <title>FC+ LIVE TV</title>
+
+  <script>
+    /* Player libs load only when user presses Watch — faster first paint */
+    window.__fcLoadHls = function (cb) {
+      if (window.Hls) { cb && cb(); return; }
+      if (window.__fcHlsLoading) { window.__fcHlsLoading.push(cb); return; }
+      window.__fcHlsLoading = cb ? [cb] : [];
+      var s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/hls.js@1.6.2/dist/hls.min.js";
+      s.async = true;
+      s.onload = function () {
+        var q = window.__fcHlsLoading || [];
+        window.__fcHlsLoading = null;
+        q.forEach(function (fn) { try { fn && fn(); } catch (e) {} });
+      };
+      s.onerror = function () {
+        var s2 = document.createElement("script");
+        s2.src = "https://unpkg.com/hls.js@1.6.2/dist/hls.min.js";
+        s2.async = true;
+        s2.onload = s.onload;
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s);
+    };
+  </script>
+
+  <style>
+    :root {
+      --bg: #0d1423;
+      --bg-soft: #111a2b;
+      --surface: #141d2f;
+      --surface-2: #1c273e;
+      --surface-3: #24324f;
+      --text: #f7f9fc;
+      --muted: #8e9bb0;
+      --muted-2: #65748b;
+      --line: rgba(255,255,255,.08);
+      --accent: #3e6cff;
+      --accent-2: #2550e6;
+      --danger: #ff4655;
+      --warning: #ffb020;
+      --shadow: 0 16px 50px rgba(0,0,0,.32);
+      --header-height: 60px;
+      --bottom-nav-height: 70px;
+      --content-max: 1440px;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { border: 0; cursor: pointer; color: inherit; }
+    a { color: inherit; text-decoration: none; }
+
+    /* Topbar */
+    .topbar {
+      position: sticky; top: 0; z-index: 100; height: var(--header-height);
+      background: color-mix(in srgb, var(--bg) 94%, transparent);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    }
+    .topbar-inner {
+      width: min(100%, var(--content-max)); height: 100%; margin: auto;
+      display: flex; align-items: center; justify-content: space-between; padding: 0 14px;
+    }
+    .brand { display: flex; align-items: center; gap: 9px; cursor: pointer; }
+    .brand-mark {
+      width: 35px; height: 35px; border-radius: 11px; display: grid; place-items: center;
+      background: var(--accent); color: #fff; font-weight: 900;
+      box-shadow: 0 8px 25px rgba(62,108,255,.25);
+    }
+    .brand-mark svg { width: 18px; height: 18px; fill: currentColor; }
+    .brand-text { font-weight: 900; letter-spacing: -.03em; font-size: 17px; }
+
+    .header-actions { display: flex; align-items: center; gap: 7px; }
+    .icon-btn {
+      width: 38px; height: 38px; display: inline-grid; place-items: center;
+      border-radius: 11px; background: var(--surface); color: var(--muted);
+      transition: .2s ease;
+    }
+    .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+    .icon { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Layout */
+    main { padding-bottom: 95px; }
+    .main-inner { width: min(100%, var(--content-max)); margin: 0 auto; padding: 14px 12px; }
+
+    /* Player */
+    .player-panel { display: none; margin-bottom: 20px; animation: slideUp .2s ease; }
+    .player-panel.is-visible { display: block; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .player-shell { position: relative; overflow: hidden; background: #000; border-radius: 18px; border: 1px solid var(--line); box-shadow: var(--shadow); }
+    .player-shell.expanded { position: fixed; inset: 0; z-index: 200; border-radius: 0; }
+    .player-video-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 520px; background: #000; }
+    .player-shell.expanded .player-video-wrap { max-height: 100vh; height: 100%; aspect-ratio: auto; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    
+    .player-toolbar { display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: var(--surface); }
+    .player-channel-name { margin: 0; font-size: 14px; font-weight: 800; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); display: inline-block; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+
+    /* Multi-source bar */
+    .source-bar { display: none; gap: 7px; overflow-x: auto; padding: 8px 12px 10px; background: var(--surface-2); border-top: 1px solid var(--line); }
+    .source-bar.is-visible { display: flex; }
+    .source-chip {
+      flex: 0 0 auto; height: 32px; padding: 0 13px; border-radius: 20px;
+      border: 1px solid #3d4b60; background: #111a2a; color: #d8deea; font-size: 11px; font-weight: 800;
+    }
+    .source-chip.active { background: #1c2a48; border-color: #3e6cff; color: #fff; }
+
+    /* Sports Pills */
+    .category-scroller { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 10px; scrollbar-width: none; }
+    .category-scroller::-webkit-scrollbar { display: none; }
+    .category-chip {
+      flex: 0 0 68px; height: 86px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-size: 10px; font-weight: 800;
+    }
+    .category-chip:hover, .category-chip.active { border-color: #3e6cff; background: var(--surface-2); color: #fff; }
+    .category-icon { font-size: 24px; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); }
+
+    /* Section & Filters */
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 10px; }
+    .section-title { font-size: 18px; font-weight: 900; margin: 0; }
+    .event-filters { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 8px; }
+    .filter-btn {
+      height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid #3d4b60;
+      background: #111a2a; color: #cbd5e1; font-size: 11px; font-weight: 800; white-space: nowrap; flex-shrink: 0;
+    }
+    .filter-btn.active { background: #1f2b42; border-color: #3e6cff; color: #fff; }
+
+    /* Match Cards (PlayZ style) */
+    .schedule { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+    .pz-match {
+      position: relative; display: flex; flex-direction: column; border-radius: 14px;
+      background: linear-gradient(180deg, #151e2f 0%, #111827 100%);
+      border: 1px solid rgba(80,100,130,.28); overflow: hidden; padding: 0; cursor: pointer; text-align: left;
+      transition: transform .15s, border-color .15s;
+    }
+    .pz-match:hover { border-color: rgba(62,108,255,.5); }
+    .pz-match:active { transform: scale(.99); }
+    .pz-match-top {
+      display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;
+      font-size: 11px; font-weight: 800; color: #cbd5e1; background: rgba(0,0,0,.25);
+    }
+    .pz-match-body { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 12px; gap: 6px; }
+    .pz-team { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; font-size: 11px; font-weight: 800; }
+    .pz-team img { width: 44px; height: 44px; border-radius: 50%; object-fit: contain; background: #1e293b; padding: 3px; border: 1px solid rgba(255,255,255,.08); }
+    .pz-team span { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pz-center { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 60px; }
+    .pz-score { font-size: 16px; font-weight: 900; }
+    .pz-live { color: #ff4d5a; font-weight: 900; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+    .pz-hot {
+      position: absolute; right: 0; bottom: 8px; background: #e11d48; color: #fff;
+      font-size: 9px; font-weight: 900; padding: 2px 8px; border-radius: 6px 0 0 6px;
+    }
+
+    /* Views container */
+    .view-panel { display: none; }
+    .view-panel.active { display: block; }
+
+    /* Categories View */
+    .category-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+    .big-cat-card {
+      min-height: 120px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+      font-size: 12px; font-weight: 800; cursor: pointer; text-align: center; padding: 10px;
+    }
+    .big-cat-icon { font-size: 32px; width: 60px; height: 60px; border-radius: 50%; background: #fff; display: grid; place-items: center; }
+
+    /* Bangladesh detail view */
+    .bangla-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+    .bangla-card {
+      padding: 10px 6px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+    }
+    .bangla-card img { width: 54px; height: 54px; border-radius: 50%; object-fit: contain; background: #1e293b; padding: 4px; }
+    .bangla-card span { font-size: 11px; font-weight: 800; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ==========================================================
+       SETTINGS VIEW (Exact match to screenshot)
+       ========================================================== */
+    .settings-view { display: none; }
+    .settings-view.active { display: block; }
+    .settings-group-title { margin: 16px 0 8px 6px; font-size: 11px; font-weight: 900; letter-spacing: .12em; color: var(--muted); }
+    .settings-list { display: grid; gap: 8px; }
+    .settings-row {
+      width: 100%; min-height: 72px; padding: 12px 14px; border-radius: 16px;
+      background: var(--surface); border: 1px solid var(--line); display: flex; align-items: center; gap: 14px;
+      text-align: left; cursor: pointer; transition: background .15s;
+    }
+    .settings-row:hover { background: var(--surface-2); }
+    .settings-icon {
+      width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px;
+      background: var(--surface-2); color: #cbd5e1; display: grid; place-items: center; font-size: 20px;
+    }
+    .settings-content { flex: 1; min-width: 0; }
+    .settings-content b { font-size: 14px; font-weight: 800; display: block; }
+    .settings-content small { font-size: 11px; color: var(--muted); display: block; margin-top: 2px; }
+    .settings-arrow { font-size: 22px; color: var(--muted-2); font-weight: 300; }
+    
+    /* Toggle switch */
+    .toggle-switch {
+      width: 48px; height: 28px; border-radius: 999px; background: #475569; position: relative;
+      cursor: pointer; flex-shrink: 0; transition: background .2s;
+    }
+    .toggle-switch::after {
+      content: ""; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px;
+      border-radius: 50%; background: #fff; transition: transform .2s;
+    }
+    .toggle-switch.active { background: #3e6cff; }
+    .toggle-switch.active::after { transform: translateX(20px); }
+
+    /* Bottom Navigation (5 tabs matching screenshot) */
+    .bottom-nav {
+      position: fixed; left: 12px; right: 12px; bottom: 8px; z-index: 130;
+      min-height: 66px; border-radius: 36px; padding: 4px 6px;
+      background: rgba(18, 27, 43, 0.95); border: 1px solid rgba(86,105,139,.35);
+      backdrop-filter: blur(18px); display: grid; grid-template-columns: repeat(5, 1fr);
+    }
+    .nav-btn {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; border-radius: 24px; color: var(--muted); font-size: 9px; font-weight: 800;
+    }
+    .nav-btn.active { color: #3e6cff; }
+    .settings-nav-pill {
+      width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+      transition: background .2s;
+    }
+    .nav-btn.active .settings-nav-pill { background: rgba(62,108,255,.2); color: #3e6cff; }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,.75); backdrop-filter: blur(6px);
+      display: none; place-items: center; padding: 16px;
+    }
+    .modal-backdrop.is-visible { display: grid; }
+    .modal-card {
+      width: min(100%, 540px); max-height: 90vh; overflow-y: auto; background: var(--surface);
+      border: 1px solid var(--line); border-radius: 20px; padding: 20px; box-shadow: var(--shadow);
+    }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .modal-head h3 { margin: 0; font-size: 17px; font-weight: 900; }
+    .form-field { margin-bottom: 12px; }
+    .form-field label { display: block; font-size: 11px; font-weight: 800; color: var(--muted); margin-bottom: 5px; }
+    .form-field input, .form-field select, .form-field textarea {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--surface-2); color: var(--text); outline: 0;
+    }
+    .btn-primary { width: 100%; height: 42px; border-radius: 12px; background: #2563eb; color: #fff; font-weight: 800; font-size: 13px; }
+    .btn-secondary { width: 100%; height: 38px; border-radius: 11px; background: var(--surface-2); color: var(--text); font-weight: 800; font-size: 12px; margin-top: 8px; }
+
+    @media (max-width: 500px) {
+      .bangla-grid { grid-template-columns: repeat(3, 1fr); }
+      .category-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" onclick="switchTab('events')">
+        <span class="brand-mark">
+          <svg viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></svg>
+        </span>
+        <span class="brand-text">FC+ LIVE TV</span>
+      </div>
+
+      <div class="header-actions">
+        <button id="headerStarBtn" class="icon-btn" onclick="alert('Favorites')" title="Favorites">★</button>
+        <button id="headerRefreshBtn" class="icon-btn" onclick="loadGitHubData(true)" title="Refresh">↻</button>
+        <button id="headerSettingsBtn" class="icon-btn" onclick="switchTab('settings')" title="Settings">⚙</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="main-inner">
+      <!-- Player Panel -->
+      <section class="player-panel" id="playerPanel">
+        <div class="player-shell" id="playerShell">
+          <div class="player-video-wrap">
+            <video id="videoPlayer" controls playsinline></video>
+          </div>
+          <div class="player-toolbar">
+            <span class="live-dot"></span>
+            <h3 class="player-channel-name" id="playerTitle">Live Stream</h3>
+            <button class="icon-btn" id="expandPlayerBtn" title="Fullscreen">⛶</button>
+            <button class="icon-btn" id="closePlayerBtn" title="Close">✕</button>
+          </div>
+          <div class="source-bar" id="sourceBar"></div>
+        </div>
+      </section>
+
+      <!-- 1. Events View (Clean, no GitHub banner) -->
+      <div id="eventsView" class="view-panel active">
+        <!-- Sports horizontal scroller -->
+        <div class="category-scroller">
+          <button class="category-chip active" onclick="filterSport('All')"><span class="category-icon">✦</span>All</button>
+          <button class="category-chip" onclick="filterSport('Football')"><span class="category-icon">⚽</span>Football</button>
+          <button class="category-chip" onclick="filterSport('Cricket')"><span class="category-icon">🏏</span>Cricket</button>
+          <button class="category-chip" onclick="filterSport('Basketball')"><span class="category-icon">🏀</span>Basketball</button>
+          <button class="category-chip" onclick="filterSport('Tennis')"><span class="category-icon">🎾</span>Tennis</button>
+          <button class="category-chip" onclick="filterSport('WWE')"><span class="category-icon">🤼</span>WWE</button>
+        </div>
+
+        <div class="section-header">
+          <h2 class="section-title">Live Events</h2>
+          <span style="font-size:12px; color:var(--muted)" id="matchCountBadge">0 matches</span>
+        </div>
+
+        <!-- Live Filters -->
+        <div class="event-filters">
+          <button class="filter-btn active" onclick="filterStatus('all')">✓ All</button>
+          <button class="filter-btn" onclick="filterStatus('LIVE')">● Live</button>
+          <button class="filter-btn" onclick="filterStatus('today')">Today's</button>
+          <button class="filter-btn" onclick="filterStatus('upcoming')">Upcoming</button>
+          <button class="filter-btn" onclick="filterStatus('ENDED')">Ended</button>
+        </div>
+
+        <!-- Schedule list -->
+        <div class="schedule" id="schedule"></div>
+      </div>
+
+      <!-- 2. Categories View with Bangladesh Tab inside -->
+      <div id="categoriesView" class="view-panel">
+        <div class="section-header">
+          <h2 class="section-title">Categories</h2>
+        </div>
+        <div style="margin-bottom:14px">
+          <div style="display:inline-flex; align-items:center; gap:6px; background:linear-gradient(90deg, #2563eb, #4f46e5); color:#fff; padding:7px 14px; border-radius:12px; font-weight:800; font-size:12px; box-shadow:0 4px 12px rgba(37,99,235,.25)">
+            <span style="font-size:16px">🇧🇩</span>
+            <span>Bangladesh (বাংলাদেশ)</span>
+          </div>
+        </div>
+        <div class="bangla-grid" id="banglaGrid"></div>
+      </div>
+
+      <!-- 4. Sports / Sky Sports View (Screenshot 3) -->
+      <div id="sportsView" class="view-panel">
+        <div class="section-header">
+          <h2 class="section-title">Sky Sports</h2>
+        </div>
+        <div class="bangla-grid" id="skySportsGrid"></div>
+      </div>
+
+      <!-- 5. Highlights View (Screenshot 4) -->
+      <div id="highlightsView" class="view-panel">
+        <div class="section-header">
+          <h2 class="section-title">Highlights</h2>
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom:12px">
+          <div style="display:flex; flex-direction:column; align-items:center; padding:10px; border-radius:14px; background:#1e293b; width:64px; text-align:center">
+            <span style="font-weight:900; font-size:12px">ALL</span>
+            <span style="font-size:9px; background:#e11d48; color:#fff; padding:1px 5px; border-radius:99px; margin-top:3px">68</span>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; padding:10px; border-radius:14px; background:#1e293b; width:64px; text-align:center">
+            <span style="font-size:16px">⚽</span>
+            <span style="font-size:9px; background:#e11d48; color:#fff; padding:1px 5px; border-radius:99px; margin-top:3px">68</span>
+          </div>
+        </div>
+        <div class="schedule" id="highlightsList"></div>
+      </div>
+
+      <!-- 6. Settings View (Exact match to the screenshot) -->
+      <div id="settingsView" class="view-panel">
+        <div class="section-header" style="margin-top:0">
+          <h2 class="section-title">Settings</h2>
+          <div style="display:flex; gap:6px">
+            <button class="icon-btn" onclick="alert('Favorites')">★</button>
+            <button class="icon-btn" onclick="loadGitHubData(true)">↻</button>
+            <button class="icon-btn" onclick="switchTab('events')">⌕</button>
+          </div>
+        </div>
+
+        <!-- GENERAL GROUP -->
+        <div class="settings-group-title">GENERAL</div>
+        <div class="settings-list">
+          <div class="settings-row" onclick="openNetworkStreamModal()">
+            <div class="settings-icon">▣</div>
+            <div class="settings-content">
+              <b>Network Stream</b>
+              <small>Add a direct live stream URL</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </div>
+
+          <div class="settings-row" onclick="openPlaylistsModal()">
+            <div class="settings-icon">☷</div>
+            <div class="settings-content">
+              <b>Playlists</b>
+              <small>Manage M3U / M3U8 playlists (GitHub)</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </div>
+
+          <div class="settings-row" onclick="switchTab('events')">
+            <div class="settings-icon">🏏</div>
+            <div class="settings-content">
+              <b>Cricket Score</b>
+              <small>Scores and match updates</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </div>
+
+          <div class="settings-row" onclick="switchTab('events')">
+            <div class="settings-icon">⚽</div>
+            <div class="settings-content">
+              <b>Football Score</b>
+              <small>Scores and match updates</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-icon">🗔</div>
+            <div class="settings-content">
+              <b>Floating Player</b>
+              <small>Keep the player above the app</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </div>
+
+          <div class="settings-row" onclick="toggleSetting('lowQuality')">
+            <div class="settings-icon">⚙</div>
+            <div class="settings-content">
+              <b>Force Low Quality</b>
+              <small>Forces lowest resolution on mobile data</small>
+            </div>
+            <div class="toggle-switch" id="toggleLowQuality"></div>
+          </div>
+
+          <div class="settings-row" onclick="toggleSetting('fullscreen')">
+            <div class="settings-icon">□</div>
+            <div class="settings-content">
+              <b>Fullscreen Playback</b>
+              <small>Open video in fullscreen automatically</small>
+            </div>
+            <div class="toggle-switch" id="toggleFullscreen"></div>
+          </div>
+
+          <div class="settings-row" onclick="toggleSetting('firstServer')">
+            <div class="settings-icon">▷</div>
+            <div class="settings-content">
+              <b>Default to First Server</b>
+              <small>Try the first available server</small>
+            </div>
+            <div class="toggle-switch active" id="toggleFirstServer"></div>
+          </div>
+        </div>
+
+        <!-- COMMUNITY GROUP -->
+        <div class="settings-group-title">COMMUNITY</div>
+        <div class="settings-list">
+          <a href="https://t.me" target="_blank" class="settings-row">
+            <div class="settings-icon" style="color:#38bdf8">➤</div>
+            <div class="settings-content">
+              <b>Join Channel</b>
+              <small>Follow FC+ LIVE TV updates</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </a>
+
+          <div class="settings-row">
+            <div class="settings-icon">?</div>
+            <div class="settings-content">
+              <b>Contact Us</b>
+              <small>Get help and support</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-icon" style="color:#f43f5e">♡</div>
+            <div class="settings-content">
+              <b>Donate Us</b>
+              <small>Support the project</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </div>
+        </div>
+
+        <!-- APP & ADMIN MANAGEMENT -->
+        <div class="settings-group-title">APP & ADMIN</div>
+        <div class="settings-list">
+          <div class="settings-row" onclick="openAdminModal()" style="border-color:rgba(62,108,255,.4); background:linear-gradient(90deg, rgba(62,108,255,.15), var(--surface))">
+            <div class="settings-icon" style="color:#60a5fa">⚙</div>
+            <div class="settings-content">
+              <b>Admin Hub & Push Updates</b>
+              <small>Only Admin pushes match & stream updates</small>
+            </div>
+            <div class="settings-arrow" style="color:#60a5fa">›</div>
+          </div>
+
+          <div class="settings-row" onclick="downloadThisHtmlFile()" style="border-color:rgba(32,212,119,.4); background:linear-gradient(90deg, rgba(32,212,119,.12), var(--surface))">
+            <div class="settings-icon" style="color:#34d399">⬇</div>
+            <div class="settings-content">
+              <b>Download HTML File (.html)</b>
+              <small>সব কোড একটি একক ফাইলে ডাউনলোড করুন</small>
+            </div>
+            <div class="settings-arrow" style="color:#34d399">›</div>
+          </div>
+
+          <div class="settings-row" onclick="shareApp()">
+            <div class="settings-icon">⌯</div>
+            <div class="settings-content">
+              <b>Share With Friends</b>
+              <small>Share FC+ LIVE TV</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </div>
+
+          <div class="settings-row" onclick="alert('You are running the latest version.')">
+            <div class="settings-icon" style="color:#38bdf8">↻</div>
+            <div class="settings-content">
+              <b>Update App</b>
+              <small>Check for the newest version</small>
+            </div>
+            <span style="font-size:10px; font-weight:800; background:#38bdf8; color:#041009; padding:2px 8px; border-radius:999px; margin-right:4px">New</span>
+            <div class="settings-arrow">›</div>
+          </div>
+
+          <div class="settings-row" onclick="clearAppData()">
+            <div class="settings-icon">🗑</div>
+            <div class="settings-content">
+              <b>Clear App Data</b>
+              <small>Reset saved favorites and history</small>
+            </div>
+            <div class="settings-arrow">›</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Mobile Bottom Nav (5 Tabs matching screenshot) -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" id="navEvents" onclick="switchTab('events')">
+      <span style="font-size:16px">📻</span>
+      <span>Live Events</span>
+    </button>
+    <button class="nav-btn" id="navCategories" onclick="switchTab('categories')">
+      <span style="font-size:16px">📺</span>
+      <span>Categories</span>
+    </button>
+    <button class="nav-btn" id="navSports" onclick="switchTab('sports')">
+      <span style="font-size:16px">⚽</span>
+      <span>Sports</span>
+    </button>
+    <button class="nav-btn" id="navHighlights" onclick="switchTab('highlights')">
+      <span style="font-size:16px">🎬</span>
+      <span>Highlights</span>
+    </button>
+    <button class="nav-btn" id="navSettings" onclick="switchTab('settings')">
+      <div class="settings-nav-pill">
+        <span style="font-size:16px">⚙</span>
+      </div>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <!-- Admin Modal (PIN Protected) -->
+  <div class="modal-backdrop" id="adminModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="adminModalTitle">Admin Hub & Push Updates</h3>
+        <button class="icon-btn" onclick="closeAdminModal()">✕</button>
+      </div>
+
+      <!-- Login Gate -->
+      <div id="adminLoginBox">
+        <p style="font-size:12px; color:var(--muted); margin-bottom:12px">
+          শুধুমাত্র অ্যাডমিন আপডেট পুশ করতে পারবেন। পাসকোড দিয়ে আনলক করুন (Default: <b>admin123</b>)
+        </p>
+        <div class="form-field">
+          <label>Admin Passcode</label>
+          <input type="password" id="adminPassInput" placeholder="Enter admin passcode" />
+        </div>
+        <button class="btn-primary" onclick="submitAdminLogin()">Unlock Admin Mode</button>
+      </div>
+
+      <!-- Admin Panel (Unlocked) -->
+      <div id="adminDashboard" style="display:none">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px">
+          <span style="font-size:12px; color:#34d399; font-weight:800">● Admin Mode Active</span>
+          <button style="font-size:11px; color:#ff4d5a; background:none; font-weight:800" onclick="logoutAdmin()">Lock</button>
+        </div>
+
+        <div style="padding:12px; background:var(--surface-2); border-radius:12px; margin-bottom:14px">
+          <b style="font-size:12px">GitHub Sync Status</b>
+          <div style="font-size:11px; color:var(--muted); margin-top:2px">Repository: RIKI-CYBER-404/REDBOX (main)</div>
+          <button class="btn-secondary" style="margin-top:8px" onclick="loadGitHubData(true)">Sync from GitHub Now</button>
+        </div>
+
+        <div class="form-field">
+          <label>Add Live Match</label>
+          <input type="text" id="admHome" placeholder="Home Team (e.g. India / Real Madrid)" style="margin-bottom:6px" />
+          <input type="text" id="admAway" placeholder="Away Team (e.g. West Indies / Barcelona)" style="margin-bottom:6px" />
+          <input type="text" id="admComp" placeholder="Competition (e.g. ODI / La Liga)" style="margin-bottom:6px" />
+          <input type="text" id="admScore" placeholder="Score (e.g. 2 — 1)" style="margin-bottom:6px" />
+          <input type="url" id="admStream" placeholder="Stream URL (.m3u8)" style="margin-bottom:6px" />
+        </div>
+        <button class="btn-primary" onclick="addAdminMatch()">Add Match & Save</button>
+
+        <div style="margin-top:16px; border-top:1px solid var(--line); padding-top:14px">
+          <button class="btn-secondary" onclick="downloadThisHtmlFile()">⬇ ডাউনলোড এই HTML ফাইল</button>
+          <button class="btn-secondary" onclick="exportMatchesJson()">📋 Copy matches.json</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const GITHUB_REPO = "RIKI-CYBER-404/REDBOX";
+    const GITHUB_MATCHES = "https://raw.githubusercontent.com/RIKI-CYBER-404/REDBOX/main/matches.json";
+
+    let currentSport = "All";
+    let currentStatus = "all";
+    let isAdmin = localStorage.getItem("fcplus_admin") === "1";
+
+    let matchesData = [];
+    const banglaChannels = [];
+    const skySportsData = [];
+    const highlightsData = [];
+
+    async function loadGitHubData(manual) {
+      try {
+        const res = await fetch(GITHUB_MATCHES + "?t=" + Date.now());
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (data.matches || []);
+          if (list.length > 0) matchesData = list;
+        }
+      } catch (e) {
+        console.warn("GitHub load:", e);
+      }
+      renderMatches();
+      if (manual) alert("GitHub ডেটা রিফ্রেশ সম্পন্ন হয়েছে!");
+    }
+
+    function renderMatches() {
+      const el = document.getElementById("schedule");
+      if (!el) return;
+
+      const filtered = matchesData.filter(m => {
+        if (currentSport !== "All" && (m.sport || "").toLowerCase() !== currentSport.toLowerCase()) return false;
+        if (currentStatus === "LIVE" && m.status !== "LIVE") return false;
+        if (currentStatus === "today" && m.day !== "today" && m.status !== "LIVE") return false;
+        if (currentStatus === "upcoming" && m.status !== "UPCOMING") return false;
+        if (currentStatus === "ENDED" && m.status !== "ENDED") return false;
+        return true;
+      });
+
+      document.getElementById("matchCountBadge").textContent = filtered.length + " matches";
+
+      if (filtered.length === 0) {
+        el.innerHTML = '<div style="padding:24px; text-align:center; color:#94a3b8; grid-column:1/-1">কোনো ম্যাচ পাওয়া যায়নি।</div>';
+        return;
+      }
+
+      el.innerHTML = filtered.map(m => `
+        <div class="pz-match" onclick="playMatch('${m.id}')">
+          <div class="pz-match-top">
+            <span>▶ ${m.sport || 'Sports'} || ${m.competition || 'Event'}</span>
+            ${m.sources && m.sources.length > 1 ? '<span style="color:#60a5fa; font-size:10px">' + m.sources.length + ' Links</span>' : ''}
+          </div>
+          <div class="pz-match-body">
+            <div class="pz-team">
+              <img src="${m.homeLogo || 'https://flagcdn.com/w80/in.png'}" alt="" onerror="this.src='https://flagcdn.com/w80/un.png'" />
+              <span>${m.home}</span>
+            </div>
+            <div class="pz-center">
+              ${m.status === 'LIVE' ? '<span class="pz-live"><span class="live-dot"></span> LIVE</span>' : '<span style="font-size:10px; color:#94a3b8">' + (m.time || 'Upcoming') + '</span>'}
+              <span class="pz-score">${m.score || 'VS'}</span>
+            </div>
+            <div class="pz-team">
+              <img src="${m.awayLogo || 'https://flagcdn.com/w80/bb.png'}" alt="" onerror="this.src='https://flagcdn.com/w80/un.png'" />
+              <span>${m.away}</span>
+            </div>
+          </div>
+          ${m.status === 'LIVE' ? '<span class="pz-hot">HOT 🔥</span>' : ''}
+        </div>
+      `).join("");
+    }
+
+    function renderBangla() {
+      const el = document.getElementById("banglaGrid");
+      if (!el) return;
+      if (banglaChannels.length === 0) {
+        el.innerHTML = '<div style="padding:40px; text-align:center; color:#94a3b8; grid-column:1/-1"><div style="font-size:24px; margin-bottom:8px">📺</div><b>কোনো বাংলা চ্যানেল পাওয়া যায়নি</b><div style="font-size:11px; margin-top:4px">গিটহাবে Categorychannel.m3u যুক্ত করা হলে এখানে প্রদর্শিত হবে।</div></div>';
+        return;
+      }
+      el.innerHTML = banglaChannels.map(c => `
+        <div class="bangla-card" onclick="playChannel('${c.name}', '${c.url}')">
+          <img src="${c.logo}" alt="" />
+          <span>${c.name}</span>
+          <span style="font-size:9px; color:#ff4d5a; font-weight:900">● LIVE</span>
+        </div>
+      `).join("");
+    }
+
+    function playMatch(id) {
+      const match = matchesData.find(m => m.id === id);
+      if (!match) return;
+      const sources = match.sources || [{ name: "SERVER 1 - AQ", url: match.streamUrl || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" }];
+      renderSourceChips(sources);
+      startStream(match.home + " vs " + match.away, sources[0].url);
+    }
+
+    function playChannel(name, url) {
+      renderSourceChips([{ name: "Direct Stream", url }]);
+      startStream(name, url);
+    }
+
+    function renderSourceChips(sources) {
+      const bar = document.getElementById("sourceBar");
+      if (sources.length <= 1) {
+        bar.classList.remove("is-visible");
+        bar.innerHTML = "";
+        return;
+      }
+      bar.classList.add("is-visible");
+      bar.innerHTML = sources.map((s, idx) => `
+        <button class="source-chip ${idx === 0 ? 'active' : ''}" onclick="switchSource('${s.url}', this)">
+          ${s.name}
+        </button>
+      `).join("");
+    }
+
+    function switchSource(url, btn) {
+      document.querySelectorAll(".source-chip").forEach(b => b.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      const video = document.getElementById("videoPlayer");
+      loadHlsUrl(video, url);
+    }
+
+    function startStream(title, url) {
+      const panel = document.getElementById("playerPanel");
+      const titleEl = document.getElementById("playerTitle");
+      const video = document.getElementById("videoPlayer");
+
+      panel.classList.add("is-visible");
+      titleEl.textContent = title;
+      loadHlsUrl(video, url);
+      panel.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function loadHlsUrl(video, url) {
+      window.__fcLoadHls(() => {
+        if (window.Hls && Hls.isSupported()) {
+          if (window.activeHls) window.activeHls.destroy();
+          const hls = new Hls();
+          window.activeHls = hls;
+          hls.loadSource(url);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+        } else {
+          video.src = url;
+          video.play().catch(() => {});
+        }
+      });
+    }
+
+    function filterSport(sport) {
+      currentSport = sport;
+      document.querySelectorAll(".category-chip").forEach(b => {
+        b.classList.toggle("active", b.textContent.includes(sport) || (sport === 'All' && b.textContent.includes('All')));
+      });
+      renderMatches();
+    }
+
+    function filterStatus(status) {
+      currentStatus = status;
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+      event.target.classList.add("active");
+      renderMatches();
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
+      document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+
+      if (tab === "events") {
+        document.getElementById("eventsView").classList.add("active");
+        document.getElementById("navEvents").classList.add("active");
+      } else if (tab === "categories" || tab === "bangla") {
+        document.getElementById("categoriesView").classList.add("active");
+        document.getElementById("navCategories").classList.add("active");
+        renderBangla();
+      } else if (tab === "sports") {
+        document.getElementById("sportsView").classList.add("active");
+        document.getElementById("navSports").classList.add("active");
+        renderSkySports();
+      } else if (tab === "highlights") {
+        document.getElementById("highlightsView").classList.add("active");
+        document.getElementById("navHighlights").classList.add("active");
+        renderHighlights();
+      } else if (tab === "settings") {
+        document.getElementById("settingsView").classList.add("active");
+        document.getElementById("navSettings").classList.add("active");
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    const skySportsData = [];
+
+    function renderSkySports() {
+      const el = document.getElementById("skySportsGrid");
+      if (!el) return;
+      if (skySportsData.length === 0) {
+        el.innerHTML = '<div style="padding:40px; text-align:center; color:#94a3b8; grid-column:1/-1"><div style="font-size:24px; margin-bottom:8px">🏆</div><b>কোনো চ্যানেল পাওয়া যায়নি</b><div style="font-size:11px; margin-top:4px">গিটহাবে sportchannel.m3u যুক্ত করা হলে এখানে প্রদর্শিত হবে।</div></div>';
+        return;
+      }
+      el.innerHTML = skySportsData.map(c => `
+        <div class="bangla-card" onclick="playChannel('${c.name}', '${c.url}')">
+          <img src="${c.logo}" alt="" />
+          <span>${c.name}</span>
+        </div>
+      `).join("");
+    }
+
+    const highlightsData = [];
+
+    function renderHighlights() {
+      const el = document.getElementById("highlightsList");
+      if (!el) return;
+      if (highlightsData.length === 0) {
+        el.innerHTML = '<div style="padding:40px; text-align:center; color:#94a3b8; grid-column:1/-1"><div style="font-size:24px; margin-bottom:8px">🎬</div><b>কোনো হাইলাইটস পাওয়া যায়নি</b></div>';
+        return;
+      }
+      el.innerHTML = highlightsData.map(h => `
+        <div class="pz-match" style="padding:12px; cursor:pointer" onclick="playChannel('${h.home} vs ${h.away}', '${h.url}')">
+          <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:10px">
+            <span style="font-weight:700; color:#cbd5e1">${h.comp}</span>
+            <span style="color:#38bdf8; font-weight:700">${h.time} <span style="color:#94a3b8">${h.date}</span></span>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:0 8px">
+            <div style="display:flex; align-items:center; gap:8px">
+              <img src="${h.homeFlag}" style="width:34px; height:34px; border-radius:50%" />
+              <b style="font-size:13px">${h.home}</b>
+            </div>
+            <b style="font-size:15px; color:#cbd5e1">VS</b>
+            <div style="display:flex; align-items:center; gap:8px">
+              <b style="font-size:13px">${h.away}</b>
+              <img src="${h.awayFlag}" style="width:34px; height:34px; border-radius:50%" />
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function openBangla() {
+      switchTab("bangla");
+      renderBangla();
+    }
+
+    function toggleSetting(key) {
+      if (key === 'lowQuality') {
+        document.getElementById("toggleLowQuality").classList.toggle("active");
+      } else if (key === 'fullscreen') {
+        document.getElementById("toggleFullscreen").classList.toggle("active");
+      } else if (key === 'firstServer') {
+        document.getElementById("toggleFirstServer").classList.toggle("active");
+      }
+    }
+
+    function openNetworkStreamModal() {
+      const url = prompt("Enter HLS Stream URL (.m3u8):");
+      if (url) {
+        startStream("Network Stream", url);
+      }
+    }
+
+    function openPlaylistsModal() {
+      alert("GitHub Playlists:\n1. Live M3U: https://raw.githubusercontent.com/RIKI-CYBER-404/REDBOX/main/Playlistsp2.m3u\n2. Sport M3U: https://raw.githubusercontent.com/RIKI-CYBER-404/REDBOX/main/sportchannel.m3u\n3. Category M3U: https://raw.githubusercontent.com/RIKI-CYBER-404/REDBOX/main/Categorychannel.m3u");
+    }
+
+    // Player controls
+    document.getElementById("closePlayerBtn").addEventListener("click", () => {
+      document.getElementById("playerPanel").classList.remove("is-visible");
+      const video = document.getElementById("videoPlayer");
+      video.pause();
+      video.removeAttribute("src");
+    });
+
+    document.getElementById("expandPlayerBtn").addEventListener("click", () => {
+      document.getElementById("playerShell").classList.toggle("expanded");
+    });
+
+    // Admin
+    function updateAdminUI() {
+      document.getElementById("adminLoginBox").style.display = isAdmin ? "none" : "block";
+      document.getElementById("adminDashboard").style.display = isAdmin ? "block" : "none";
+    }
+
+    function openAdminModal() {
+      updateAdminUI();
+      document.getElementById("adminModal").classList.add("is-visible");
+    }
+    function closeAdminModal() {
+      document.getElementById("adminModal").classList.remove("is-visible");
+    }
+
+    function submitAdminLogin() {
+      const pin = document.getElementById("adminPassInput").value;
+      if (pin === "admin123" || pin === localStorage.getItem("fcplus_pin")) {
+        isAdmin = true;
+        localStorage.setItem("fcplus_admin", "1");
+        updateAdminUI();
+      } else {
+        alert("ভুল পাসকোড! সঠিক পাসকোড দিন। (Default: admin123)");
+      }
+    }
+
+    function logoutAdmin() {
+      isAdmin = false;
+      localStorage.removeItem("fcplus_admin");
+      updateAdminUI();
+    }
+
+    function addAdminMatch() {
+      const home = document.getElementById("admHome").value.trim();
+      const away = document.getElementById("admAway").value.trim();
+      const comp = document.getElementById("admComp").value.trim() || "Live Match";
+      const score = document.getElementById("admScore").value.trim();
+      const stream = document.getElementById("admStream").value.trim() || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+
+      if (!home || !away) { alert("Home এবং Away টিম নাম দিন"); return; }
+
+      const newM = {
+        id: "m-" + Date.now(),
+        home, away, competition: comp, sport: "Football",
+        status: "LIVE", score: score || "0 — 0",
+        streamUrl: stream,
+        sources: [{ name: "SERVER 1 - AQ", url: stream }]
+      };
+      matchesData.unshift(newM);
+      renderMatches();
+      alert("ম্যাচ যোগ করা হয়েছে! এবার matches.json কপি করে গিটহাবে পুশ করুন।");
+      document.getElementById("admHome").value = "";
+      document.getElementById("admAway").value = "";
+    }
+
+    function exportMatchesJson() {
+      const str = JSON.stringify(matchesData, null, 2);
+      navigator.clipboard.writeText(str).then(() => {
+        alert("matches.json কপি হয়েছে! আপনার GitHub রিপোজিটরিতে পেস্ট করুন।");
+      });
+    }
+
+    function shareApp() {
+      if (navigator.share) {
+        navigator.share({ title: "FC+ LIVE TV", url: location.href });
+      } else {
+        navigator.clipboard.writeText(location.href);
+        alert("Link copied!");
+      }
+    }
+
+    function clearAppData() {
+      if (confirm("Reset app data?")) {
+        localStorage.clear();
+        location.reload();
+      }
+    }
+
+    // Direct Single File Download
+    function downloadThisHtmlFile() {
+      const html = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "fcplus-live-tv.html";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // Init
+    updateAdminUI();
+    loadGitHubData();
+    renderBangla();
+  </script>
+</body>
+</html>
