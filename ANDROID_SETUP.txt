@@ -1,0 +1,6 @@
+FC+ LIVE TV Android preparation
+- Capacitor 8 config added
+- Android GitHub Actions workflow added
+- App ID: com.fcplus.livetv
+- App name: FC+ LIVE TV
+- Web output: dist

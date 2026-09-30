@@ -1,0 +1,6 @@
+{
+  "name": "FC+ LIVE TV - Sport Streaming & Admin Sync",
+  "description": "Mobile-first sports live TV and live events streaming platform with GitHub-backed sync and admin management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
